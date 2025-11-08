@@ -8,7 +8,7 @@ on:
   workflow_dispatch: {}
 
 env:
-  IMAGE_OWNER: ${{ github.repository_owner }}
+  IMAGE_OWNER: jamessyjay
   IMAGE_NAME: gpu-cluster-acceptance
 
 jobs:
@@ -31,8 +31,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: jamessyjay
 
       - name: Build CPU image (Ubuntu 24.04 + Py3.13 + torch 2.6 CPU)
         uses: docker/build-push-action@v6
