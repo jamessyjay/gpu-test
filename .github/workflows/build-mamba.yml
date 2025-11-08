@@ -36,12 +36,12 @@ jobs:
           target: cpu
           push: false
           platforms: linux/amd64
-          tags: ghcr.io/${{ env.IMAGE_NAME }}:cpu-ci
+          tags: ghcr.io/${{ env.IMAGE_NAME }}:cpu
 
       - name: CPU smoke tests
         run: |
-          docker run --rm ghcr.io/${{ env.IMAGE_NAME }}:cpu-ci python -c "import torch; print('torch', torch.__version__)"
-          docker run --rm ghcr.io/${{ env.IMAGE_NAME }}:cpu-ci python src/gpu_tests.py --cpu-only --quick
+          docker run --rm ghcr.io/${{ env.IMAGE_NAME }}:cpu python -c "import torch; print('torch', torch.__version__)"
+          docker run --rm ghcr.io/${{ env.IMAGE_NAME }}:cpu python src/gpu_tests.py --cpu-only --quick
 
       - name: Push CPU image on main
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
@@ -83,7 +83,7 @@ jobs:
           target: gpu
           push: false
           platforms: linux/amd64
-          tags: ghcr.io/${{ env.IMAGE_NAME }}:gpu-ci
+          tags: ghcr.io/${{ env.IMAGE_NAME }}:gpu
 
       # GPU tests are skipped on GitHub-hosted runners (no GPU). They can be run on self-hosted.
       - name: Push GPU image on main
