@@ -15,33 +15,47 @@ Tests inside the container:
 
 
 ## Composition
-- **Dockerfile**: base image `nvcr.io/nvidia/pytorch:24.07-py3`, minimal dependencies.
-- **src/gpu_tests.py**: main script, runs by default (`ENTRYPOINT ["python", "src/gpu_tests.py"]`).
+- **Dockerfile.mamba**: multi-stage build with micromamba.
+  - CPU stage: `ubuntu:24.04`.
+  - GPU stage: `nvidia/cuda:12.6.1-runtime-ubuntu24.04` (last stage, builds by default).
+- **src/gpu_tests.py**: main script. By default GPU image runs quick test via `CMD ["python","src/gpu_tests.py","--quick"]`.
 - **sbatch/**: Slurm scripts for single node and multi-node DDP.
 
 
 ## Container building
 ```bash
 # from the root of the repo
-docker buildx build -t gpu-accept:latest .
+export IMAGE=ghcr.io/jamessyjay/gpu-cluster-acceptance
+
+# GPU image (default, last stage)
+docker build -f Dockerfile.mamba -t ${IMAGE}:latest .
+
+# CPU image (for CI/smoke)
+docker build -f Dockerfile.mamba --target cpu -t ${IMAGE}:cpu .
 ```
 
 ## Running locally (Docker)
 ```bash
-# full run on all visible GPUs
-docker run --rm --gpus all gpu-accept:latest
+export IMAGE=ghcr.io/jamessyjay/gpu-cluster-acceptance
 
-# quick run (fewer iterations/matrix sizes)
-docker run --rm --gpus all gpu-accept:latest --quick
+# quick GPU check (default CMD runs quick test too)
+docker run --rm --gpus all ${IMAGE}:latest \
+  python src/gpu_tests.py --quick
 
-# CPU-режим (для CI без GPU)
-docker run --rm gpu-accept:latest --cpu-only
+# full GPU run
+docker run --rm --gpus all ${IMAGE}:latest \
+  python src/gpu_tests.py
 
-# подробные логи
-docker run --rm --gpus all gpu-accept:latest --verbose
+# CPU mode (for CI or hosts without GPUs)
+docker run --rm ${IMAGE}:cpu \
+  python src/gpu_tests.py --cpu-only --quick
+
+# multi-GPU on a single node
+docker run --rm --gpus all ${IMAGE}:latest \
+  bash -lc 'torchrun --standalone --nproc_per_node=$(nvidia-smi -L | wc -l) src/ddp_tests.py --iters=50 --numel=2000000'
 ```
 
-Arguments are passed directly, since `ENTRYPOINT` is already set.
+Note: container uses `ENTRYPOINT ["/usr/bin/tini","--"]` with CMD to run the script.
 
 
 ## Running on the cluster (Slurm)
@@ -58,6 +72,35 @@ Arguments are passed directly, since `ENTRYPOINT` is already set.
 Notes:
 - Scripts assume correct integration with containers (Pyxis/Enroot) and access to the image.
 - Adjust any parameters (partition, gpus-per-node, ntasks-per-node, container-image, etc.) for your cluster.
+
+## Deployment: Slurm (Pyxis/Enroot)
+Minimal options for DevOps to run acceptance checks via Slurm.
+
+```bash
+# image is pushed by CI to GHCR
+export IMAGE=ghcr.io/jamessyjay/gpu-cluster-acceptance:latest
+
+# interactive run on a GPU node (Pyxis)
+srun -A <account> -p <gpu-partition> -N 1 -n 1 --gpus 1 \
+  --container-image=${IMAGE} \
+  python /app/src/gpu_tests.py --quick
+
+# single-node multi-GPU (use all visible GPUs)
+srun -A <account> -p <gpu-partition> -N 1 --gpus-per-node=<N> \
+  --container-image=${IMAGE} \
+  bash -lc 'torchrun --standalone --nproc_per_node=$(nvidia-smi -L | wc -l) /app/src/ddp_tests.py --iters=50 --numel=2000000'
+
+# multi-node DDP (example)
+srun -A <account> -p <gpu-partition> -N ${NNODES} --gpus-per-node=${GPUS} \
+  --container-image=${IMAGE} \
+  bash -lc 'torchrun --nnodes=${NNODES} --nproc_per_node=${GPUS} --rdzv_backend=c10d \
+  --rdzv_endpoint=$SLURM_NODELIST:29500 /app/src/ddp_tests.py --iters=50 --numel=2000000'
+```
+
+Tips:
+- Ensure Pyxis/Enroot is enabled and users have pull access to GHCR.
+- NCCL envs can be tuned via `--container-env`: e.g. `NCCL_DEBUG=INFO`.
+- For air-gapped: mirror the image to internal registry and adjust `IMAGE`.
 
 
 ## How to interpret the output
@@ -102,6 +145,32 @@ Example of expected "healthy" output:
 ## Debugging
 - Run with `--verbose`.
 - Compare `[ENV]` and `nvidia-smi -L` with the host.
-- Locally: `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi` — runtime check.
+- Locally: `docker run --rm --gpus all nvidia/cuda:12.6.1-base-ubuntu24.04 nvidia-smi` — runtime check.
 - On the cluster: check Slurm allocations `sinfo`, `squeue`, partition quotas.
+
+## Deployment: Kubernetes (GPU nodes)
+Minimal Job spec (requests 1 NVIDIA GPU):
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-accept
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: tester
+          image: ghcr.io/jamessyjay/gpu-cluster-acceptance:latest
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          command: ["python", "src/gpu_tests.py", "--quick"]
+```
+
+Notes:
+- Requires NVIDIA device plugin on the cluster.
+- For multi-GPU per pod: set `nvidia.com/gpu: <N>` and use `torchrun` similarly to Docker example.
+- For private GHCR: create an `imagePullSecret` and reference it in the pod spec.
 
