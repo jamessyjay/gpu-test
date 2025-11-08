@@ -8,7 +8,7 @@ on:
   workflow_dispatch: {}
 
 env:
-  IMAGE_OWNER: ${{ github.repository_owner }}
+  IMAGE_OWNER: jamesyjay
   IMAGE_NAME: gpu-cluster-acceptance
 
 jobs:
@@ -41,6 +41,7 @@ jobs:
           file: Dockerfile.mamba
           target: cpu
           push: false
+          load: true
           platforms: linux/amd64
           tags: |
             ghcr.io/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:cpu-ci

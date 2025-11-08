@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1.7-labs
+FROM nvidia/cuda:12.6.1-base-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    NCCL_DEBUG=INFO
+
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-pip python3-venv ca-certificates tini curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Torch + dependencies (CU126 wheels already include CUDA libs + NCCL)
+RUN python3 -V \
+ && python3 -m pip install --no-cache-dir --upgrade pip \
+ && python3 -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu126 \
+      torch==2.6.* \
+ && python3 -m pip install --no-cache-dir \
+      pydantic==2.9.2 \
+      torchmetrics==1.4.0.post0
+
+WORKDIR /app
+COPY src/ ./src/
+ENV PYTHONPATH=/app/src
+
+# Cleanup
+RUN find /usr -type d -name '__pycache__' -prune -exec rm -rf {} + || true \
+ && rm -rf /usr/share/man /usr/share/doc /usr/share/locale || true
+
+ENTRYPOINT ["/usr/bin/tini","--"]
+CMD ["python3","src/gpu_tests.py","--quick"]

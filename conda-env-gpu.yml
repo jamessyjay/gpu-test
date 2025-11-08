@@ -4,10 +4,11 @@ channels:
   - nvidia
   - conda-forge
 dependencies:
-  - python=3.13
+  - python=3.11
   - pip
   - pytorch=2.6.*
-  - pytorch-cuda=12.6
+  - pytorch-cuda=12.4
+  - nccl
   - pip:
       - pydantic==2.9.2
       - torchmetrics==1.4.0.post0
