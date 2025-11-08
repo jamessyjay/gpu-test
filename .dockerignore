@@ -1,0 +1,19 @@
+# Keep image/context lean
+.git
+*.ipynb
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+venv/
+.venv/
+build/
+dist/
+*.whl
+data/
+datasets/
+outputs/
+logs/
+_*

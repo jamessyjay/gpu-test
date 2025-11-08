@@ -1,0 +1,13 @@
+name: app
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - pytorch=2.6.*
+  - pytorch-cuda=12.6
+  - pip:
+      - pydantic==2.9.2
+      - torchmetrics==1.4.0.post0
