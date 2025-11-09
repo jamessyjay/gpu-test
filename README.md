@@ -1,6 +1,9 @@
 # GPU Cluster Acceptance — README
 
 
+
+**Uncompressed image size:** 6.11GB
+
 ## Goal
 - Check nodes and GPU cluster "as in real life", not only with synthetic data.
 - Verify:

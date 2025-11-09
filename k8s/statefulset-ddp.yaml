@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpu-accept-ddp
+  labels:
+    app: gpu-accept-ddp
+spec:
+  clusterIP: None  # headless
+  publishNotReadyAddresses: true
+  selector:
+    app: gpu-accept-ddp
+  ports:
+    - name: rdzv
+      port: 29500
+      targetPort: 29500
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: gpu-accept-ddp
+spec:
+  serviceName: gpu-accept-ddp
+  replicas: 64  # adjust: 1..64 nodes
+  selector:
+    matchLabels:
+      app: gpu-accept-ddp
+  template:
+    metadata:
+      labels:
+        app: gpu-accept-ddp
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: ddp
+          image: ghcr.io/jamessyjay/gpu-cluster-acceptance:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 29500
+              name: rdzv
+          resources:
+            limits:
+              nvidia.com/gpu: 8   # adjust 1..8 GPUs per node
+          env:
+            - name: NNODES
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.replicas  # not supported everywhere; fallback to hardcoded below
+            - name: GPUS_PER_NODE
+              value: "8"
+          volumeMounts:
+            - name: reports
+              mountPath: /app/reports
+          command: ["bash","-lc"]
+          args:
+            - >-
+              set -euo pipefail;
+              NN=${NNODES:-64};
+              GPUS=${GPUS_PER_NODE:-8};
+              RDZV_HOST=gpu-accept-ddp-0.gpu-accept-ddp;  # rank0 pod DNS
+              echo "Using nnodes=$NN, gpus_per_node=$GPUS, rdzv=$RDZV_HOST:29500";
+              python - << 'PY'
+              import os, json
+              os.makedirs('/app/reports', exist_ok=True)
+              PY
+              exec bash -lc "torchrun --nnodes=${NN} --nproc_per_node=${GPUS} \
+                --rdzv_backend=c10d --rdzv_endpoint=${RDZV_HOST}:29500 \
+                /app/src/ddp_tests.py --verbose --report-dir /app/reports --report-name ddp_tests_result.json"
+      volumes:
+        - name: reports
+          emptyDir: {}

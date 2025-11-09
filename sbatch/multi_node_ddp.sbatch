@@ -8,9 +8,7 @@ MASTER_ADDRESS=$(scontrol show hostnames "$SLURM_NODELIST" | head -n 1)
 MASTER_PORT=29500
 NODES=${SLURM_NNODES}
 GPUS_PER_NODE=${SLURM_GPUS_ON_NODE:-2}
-NUMEL=16777216
 BACKEND=c10d
-ITERATIONS=1
 OWNER=${OWNER:-OWNER}
 
 srun --container-image=ghcr.io/${OWNER}/gpu-cluster-acceptance:latest \
@@ -19,4 +17,4 @@ srun --container-image=ghcr.io/${OWNER}/gpu-cluster-acceptance:latest \
       --rdzv_endpoint=${MASTER_ADDRESS}:${MASTER_PORT} \
       --nnodes=${NODES} \
       --nproc_per_node=${GPUS_PER_NODE} \
-      /app/src/ddp_tests.py --iters=${ITERATIONS} --numel=${NUMEL}"
+      /app/src/ddp_tests.py --verbose --report-dir /app/reports --report-name ddp_tests_result.json"

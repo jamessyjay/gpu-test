@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-accept-daemon
+spec:
+  selector:
+    matchLabels:
+      app: gpu-accept-daemon
+  template:
+    metadata:
+      labels:
+        app: gpu-accept-daemon
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: tester
+          image: ghcr.io/jamessyjay/gpu-cluster-acceptance:latest
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: reports
+              mountPath: /app/reports
+          command: ["python", "src/run_all_tests.py", "--quick", "--report-dir", "/app/reports", "--report-name", "summary.json"]
+      volumes:
+        - name: reports
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-accept-daemon-readme
+data:
+  HOW_TO_GET_REPORTS: |
+    Each pod writes JSON to /app/reports (emptyDir). Use `kubectl cp` or `kubectl logs` to collect.

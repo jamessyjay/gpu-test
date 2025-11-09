@@ -81,4 +81,4 @@ COPY src/ ./src/
 ENV PYTHONPATH=/app/src
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["python","src/gpu_tests.py","--quick"]
+CMD ["python","src/run_all_tests.py","--quick"]

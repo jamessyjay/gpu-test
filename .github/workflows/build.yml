@@ -60,9 +60,13 @@ jobs:
       - name: GPU smoke test (runs only if GPU is present)
         if: steps.detect-gpu.outputs.has_gpu == 'true'
         run: |
+          mkdir -p reports
           docker run --rm --gpus all \
+            -v "$PWD/reports:/app/reports" \
             ghcr.io/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:gpu \
-            python src/gpu_tests.py --quick
+            python src/run_all_tests.py --quick --report-dir /app/reports --report-name summary.json
+          echo "=== SUMMARY ==="
+          cat reports/summary.json
 
       - name: No GPU detected - skipping tests
         if: steps.detect-gpu.outputs.has_gpu == 'false'

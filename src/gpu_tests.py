@@ -1,10 +1,30 @@
 # gpu-cluster-acceptance/src/gpu_tests.py
+"""
+Single-node GPU acceptance tests: compute GFLOPs and training smoke.
+
+This module checks that CUDA devices are visible and operational by:
+- Running matrix multiplication loops on each visible GPU to estimate GFLOP/s
+- Training a tiny MLP on synthetic data to ensure basic training works
+
+Features:
+- Auto-detects GPUs; if none are present, exits successfully (skipped)
+- Supports a quick mode with reduced workload
+- Can emit JSON reports (skipped/failure/success) to a specified directory
+
+CLI parameters:
+- --quick (bool): reduce workload for fast smoke runs
+- --verbose (bool): enable DEBUG logging
+- --report-dir (str|None): directory to write JSON report(s)
+- --report-name (str|None): file name for JSON report (default depends on status)
+"""
 from argparse import ArgumentParser, Namespace
 from logging import basicConfig, getLogger, INFO, DEBUG
 from subprocess import check_output, CalledProcessError, STDOUT
 from sys import version, exit
 from time import time
 from typing import Dict, Any, Tuple
+import json
+import os
 
 # torch: Neural Network library
 import torch
@@ -14,6 +34,16 @@ from torch.utils.data import Dataset, DataLoader
 
 basicConfig(level=INFO)
 logger = getLogger(__name__)
+
+
+def _write_report(report_dir: str, report_name: str, default_name: str, payload: Dict[str, Any]) -> None:
+    if not report_dir:
+        return
+    os.makedirs(report_dir, exist_ok=True)
+    name = report_name or default_name
+    path = os.path.join(report_dir, name)
+    with open(path, "w") as f:
+        json.dump(payload, f)
 
 
 def set_logger_level(level: int = INFO) -> None:
@@ -268,14 +298,34 @@ def training_smoke(device:str="cpu", epochs:int=3, batch:int=256) -> Dict[str, A
 
 
 def parse_args() -> Namespace:
+    """Parse command-line arguments for GPU single-node tests.
+
+    Returns:
+        argparse.Namespace: Fields:
+          - quick (bool): quick smoke mode
+          - verbose (bool): enable DEBUG logs
+          - report_dir (str|None): directory for JSON report(s)
+          - report_name (str|None): JSON file name override
+    """
     ap = ArgumentParser()
     # Quick mode for fast runs / smoke tests
     ap.add_argument("--quick", action="store_true", help="quick run")
     ap.add_argument("--verbose", action="store_true", help="verbose output")
+    ap.add_argument("--report-dir", type=str, default=None, help="directory to write JSON report")
+    ap.add_argument("--report-name", type=str, default=None, help="file name for JSON report")
     return ap.parse_args()
 
 
 def main():
+    """Program entry point: run compute and training tests on available GPUs.
+
+    Logic:
+      - Parse args, set logging level, collect environment info
+      - If no GPUs are detected, write a skipped report (if requested) and exit 0
+      - For each GPU: run compute test (matmul loops) and log GFLOP/s
+      - On device0: run a tiny training loop and verify loss improvement
+      - Emit JSON report on success/failure when requested; exit non-zero on failure
+    """
     args = parse_args()
     set_logger_level(INFO if not args.verbose else DEBUG)
     environment = _get_environment()
@@ -289,6 +339,8 @@ def main():
     if not use_gpu:
         logger.info("[COMPUTE] GPU tests skipped (no GPU detected)")
         logger.info("[RESULT] SKIPPED (no GPU)")
+        _write_report(args.report_dir, args.report_name, "gpu_tests_skipped.json",
+                      {"skipped": True, "reason": "no_gpu", "env": environment})
         exit(0)
 
     # 1) compute test (for each GPU if available)
@@ -326,8 +378,12 @@ def main():
 
     if failures:
         logger.error(f"[RESULT] FAILURE: {failures}")
+        _write_report(args.report_dir, args.report_name, "gpu_tests_result.json",
+                      {"env": environment, "failures": failures})
         exit(2)
     logger.info("[RESULT] SUCCESS")
+    _write_report(args.report_dir, args.report_name, "gpu_tests_result.json",
+                  {"env": environment, "compute": True, "training": True})
     exit(0)
 
 
