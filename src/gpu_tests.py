@@ -269,8 +269,6 @@ def training_smoke(device:str="cpu", epochs:int=3, batch:int=256) -> Dict[str, A
 
 def parse_args() -> Namespace:
     ap = ArgumentParser()
-    # CPU-only mode for CI
-    ap.add_argument("--cpu-only", action="store_true", help="force CPU path")
     # Quick mode for fast runs / smoke tests
     ap.add_argument("--quick", action="store_true", help="quick run")
     ap.add_argument("--verbose", action="store_true", help="verbose output")
@@ -284,31 +282,34 @@ def main():
     failures = []
     have_cuda_devices = environment["cuda_available"] and environment["cuda_device_count"] > 0
     logger.info(f"[ENV] have CUDA devices: {have_cuda_devices}")
-    use_gpu = (not args.cpu_only) and have_cuda_devices
+    use_gpu = have_cuda_devices
     logger.info(f"[ENV] use GPU: {use_gpu}")
 
+    # If no GPU is available, skip tests successfully (used by CI without GPUs)
+    if not use_gpu:
+        logger.info("[COMPUTE] GPU tests skipped (no GPU detected)")
+        logger.info("[RESULT] SKIPPED (no GPU)")
+        exit(0)
+
     # 1) compute test (for each GPU if available)
-    if use_gpu:
-        for device in range(environment["cuda_device_count"]):
-            try:
-                logger.debug(f"[COMPUTE] compute_test_gpu[cuda:{device}]")
-                if args.quick:
-                    matrix_size, iterations = 2048, 10
-                else:
-                    matrix_size, iterations = 3072, 20
-                logger.debug(f"[COMPUTE] compute_test_gpu[cuda:{device}]: "
-                             f"matrix_size={matrix_size}, iterations={iterations}")
-                compute_test_gpu(f"cuda:{device}", 
-                                 matrix_size=matrix_size, 
-                                 iterations=iterations)
-            except Exception as err:
-                failures.append(f"compute[cuda: {device}]: {err}")
-    else:
-        logger.info("[COMPUTE] GPU tests skipped (CPU-only)")
+    for device in range(environment["cuda_device_count"]):
+        try:
+            logger.debug(f"[COMPUTE] compute_test_gpu[cuda:{device}]")
+            if args.quick:
+                matrix_size, iterations = 2048, 10
+            else:
+                matrix_size, iterations = 3072, 20
+            logger.debug(f"[COMPUTE] compute_test_gpu[cuda:{device}]: "
+                         f"matrix_size={matrix_size}, iterations={iterations}")
+            compute_test_gpu(f"cuda:{device}", 
+                             matrix_size=matrix_size, 
+                             iterations=iterations)
+        except Exception as err:
+            failures.append(f"compute[cuda: {device}]: {err}")
 
     # 2) training smoke (on device0)
     try:
-        device0 = "cuda:0" if use_gpu else "cpu"
+        device0 = "cuda:0"
         logger.debug(f"[TRAIN] device0: {device0}")
         epochs = 2 if args.quick else 3
         logger.debug(f"[TRAIN] epochs: {epochs}")

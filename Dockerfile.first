@@ -1,0 +1,16 @@
+FROM nvcr.io/nvidia/pytorch:24.07-py3
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+
+
+RUN ls -R . && pip install --no-cache-dir --upgrade pip
+
+COPY src/ ./src/
+ENV PYTHONPATH=/app/src
+#ENV QUICK="--quick"
+#ENV CPU_ONLY="--cpu-only"
+#ENV VERBOSE="--verbose"
+#ENTRYPOINT ["python", "src/gpu_tests.py", "$QUICK", "$CPU_ONLY", "$VERBOSE"]
+
+ENTRYPOINT ["python", "src/gpu_tests.py"]

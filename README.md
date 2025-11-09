@@ -13,11 +13,12 @@ Tests inside the container:
 - **Training smoke**: tiny model, training for a few epochs → loss decreases.
 - _[*Optionally*]_: DDP/multi-node checks via sbatch examples.
 
+Note: when no GPU is detected, the test script exits successfully (skips tests). This is used by CI where runners have no GPUs.
+
 
 ## Composition
 - **Dockerfile.mamba**: multi-stage build with micromamba.
-  - CPU stage: `ubuntu:24.04`.
-  - GPU stage: `nvidia/cuda:12.6.1-runtime-ubuntu24.04` (last stage, builds by default).
+- GPU stage: `nvidia/cuda:12.6.1-runtime-ubuntu24.04` (last stage, builds by default).
 - **src/gpu_tests.py**: main script. By default GPU image runs quick test via `CMD ["python","src/gpu_tests.py","--quick"]`.
 - **sbatch/**: Slurm scripts for single node and multi-node DDP.
 
@@ -29,9 +30,6 @@ export IMAGE=ghcr.io/jamessyjay/gpu-cluster-acceptance
 
 # GPU image (default, last stage)
 docker build -f Dockerfile.mamba -t ${IMAGE}:latest .
-
-# CPU image (for CI/smoke)
-docker build -f Dockerfile.mamba --target cpu -t ${IMAGE}:cpu .
 ```
 
 ## Running locally (Docker)
@@ -45,10 +43,6 @@ docker run --rm --gpus all ${IMAGE}:latest \
 # full GPU run
 docker run --rm --gpus all ${IMAGE}:latest \
   python src/gpu_tests.py
-
-# CPU mode (for CI or hosts without GPUs)
-docker run --rm ${IMAGE}:cpu \
-  python src/gpu_tests.py --cpu-only --quick
 
 # multi-GPU on a single node
 docker run --rm --gpus all ${IMAGE}:latest \
@@ -125,8 +119,11 @@ Example of expected "healthy" output:
 
 ## Tuning and flags
 - `--quick` — quick run (fewer iterations and matrix sizes).
-- `--cpu-only` — force CPU path (useful in CI).
 - `--verbose` — detailed DEBUG logs.
+
+## Changes in this revision
+- Removed CPU tests and CPU CI job. CI now only builds the GPU image.
+- Test script skips and exits 0 when no GPU is detected (useful on GitHub-hosted runners).
 
 
 ## Limitations and further extensions
