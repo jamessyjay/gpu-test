@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1.7-labs
+FROM python:3.11-slim-bookworm
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# System libs (minimum). libgomp1 — for OpenMP in PyTorch.
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && apt-get install -y --no-install-recommends \
+      tini libgomp1 ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python virtualenv (to avoid polluting system site-packages)
+ENV VENV=/opt/venv
+RUN python -m venv $VENV
+ENV PATH=$VENV/bin:$PATH
+
+# PyTorch + CUDA 12.4: official wheels
+# torchvision/torchaudio are not installed, if not needed — saves hundreds of megabytes
+RUN python -m pip install --upgrade pip && \
+    python -m pip install --index-url https://download.pytorch.org/whl/cu124 \
+      torch==2.5.1 --no-cache-dir
+
+# Your pip dependencies, NO torch/torchvision/torchaudio are installed
+COPY requirements.txt /tmp/requirements.txt
+RUN python -m pip install --no-deps -r /tmp/requirements.txt
+
+# Application
+WORKDIR /app
+COPY src/ ./src/
+ENV PYTHONPATH=/app/src
+
+ENTRYPOINT ["/usr/bin/tini","--"]
+CMD ["python","src/run_all_tests.py","--quick"]

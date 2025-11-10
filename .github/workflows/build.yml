@@ -38,14 +38,14 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.mamba
-          target: gpu
+          file: Dockerfile.pip-gpu
+          target: pip-gpu
           push: false
           load: true
           # GPU-image strictly x86_64
           platforms: linux/amd64
           tags: |
-            ghcr.io/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:gpu
+            ghcr.io/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:pip-gpu
 
       - name: Detect GPU availability
         id: detect-gpu
@@ -63,7 +63,7 @@ jobs:
           mkdir -p reports
           docker run --rm --gpus all \
             -v "$PWD/reports:/app/reports" \
-            ghcr.io/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:gpu \
+            ghcr.io/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:pip-gpu \
             python src/run_all_tests.py --quick --report-dir /app/reports --report-name summary.json
           echo "=== SUMMARY ==="
           cat reports/summary.json
@@ -79,11 +79,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.mamba
-          target: gpu
+          file: Dockerfile.pip-gpu
+          target: pip-gpu
           push: true
           platforms: linux/amd64
           tags: |
-            ghcr.io/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:latest
-            ghcr.io/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:gpu
+            ghcr.io/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:pip-gpu
             ghcr.io/${{ env.IMAGE_OWNER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}

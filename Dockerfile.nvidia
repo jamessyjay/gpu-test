@@ -1,0 +1,71 @@
+# syntax=docker/dockerfile:1.7-labs
+# Base: NGC PyTorch 24.07 (CUDA 12.4, cudnn9, NCCL inside)
+FROM nvcr.io/nvidia/pytorch:24.07-py3
+
+SHELL ["/bin/bash","-lc"]
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    # Usually the image already points to the active conda env (pytorch),
+    # but just in case we'll grab /opt/conda/bin
+    PATH=/opt/conda/bin:$PATH
+
+# --- 1) Remove everything we don't need for your tests ---
+# - move notebooks/jupyter/demos
+# - torchvision/torchaudio (heavy), DALI (if present)
+# - matplotlib/pandas/sklearn/scipy/seaborn/opencv, if present
+# - clean conda/pip caches
+RUN set -ex \
+ # What env is active — let's get it, PYTHON points to it; working through pip
+ && python -V \
+ && echo "== Uninstall heavy pip stuff if present ==" \
+ && for p in \
+      jupyter jupyterlab notebook ipywidgets ipykernel \
+      tensorflow tensorflow-gpu \
+      torchvision torchaudio \
+      nvidia-dali-cuda* \
+      matplotlib seaborn pandas scikit-learn scipy opencv-python pillow \
+    ; do python -m pip show "$p" >/dev/null 2>&1 && python -m pip uninstall -y "$p" || true; done \
+ # If something is installed through conda — try to carefully remove it
+ && echo "== Try conda remove for heavy stuff (best-effort) ==" \
+ && for c in \
+      jupyter jupyterlab notebook ipywidgets ipykernel \
+      matplotlib seaborn pandas scikit-learn scipy \
+      torchvision torchaudio \
+      nvidia-dali-cuda \
+    ; do conda list | grep -E "^${c}[[:space:]]" >/dev/null 2>&1 && conda remove -y "${c}" || true; done \
+ # Clean conda/pip caches
+ && conda clean -afy || true \
+ && rm -rf /root/.cache/pip /root/.cache/matplotlib /opt/pipcache || true \
+ # Remove demo, notebooks and other samples, if they are present
+ && rm -rf /workspace/* /opt/pytorch_examples 2>/dev/null || true
+
+# --- 2) Minimal runtime: only what your tests need ---
+# Install your dependencies without torch
+COPY requirements.txt /tmp/requirements.txt
+RUN python -m pip install --no-deps -r /tmp/requirements.txt \
+ && rm -f /tmp/requirements.txt
+
+# --- 3) Diet by files ---
+#  - *.a (static libraries) — in the trash
+#  - __pycache__ and *.pyc
+#  - tests/ and *.dist-info/RECORD (leave package metadata)
+#  - strip large .so (carefully, but usually ok)
+RUN set -ex \
+ && find / -xdev -type f -name "*.a" -delete 2>/dev/null || true \
+ && find / -xdev -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true \
+ && find / -xdev -type f -name "*.pyc" -delete 2>/dev/null || true \
+ && find /opt/conda -type d -name "tests" -prune -exec rm -rf {} + 2>/dev/null || true \
+ && (command -v strip >/dev/null && \
+     find /opt/conda -type f -name "*.so" -size +5M -exec strip --strip-unneeded {} + || true)
+
+# --- 4) Application ---
+WORKDIR /app
+COPY src/ ./src/
+ENV PYTHONPATH=/app/src
+
+# Normal entrypoint
+RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
+ENTRYPOINT ["/usr/bin/tini","--"]
+CMD ["python","src/run_all_tests.py","--quick"]

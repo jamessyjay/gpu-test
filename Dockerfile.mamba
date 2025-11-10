@@ -44,6 +44,16 @@ COPY requirements.txt /tmp/requirements.txt
 RUN python -m pip install --no-deps -r /tmp/requirements.txt \
  && rm -f /tmp/requirements.txt
 
+# After creating env
+RUN ${MAMBA_ROOT_PREFIX}/bin/micromamba clean -a -y && \
+    # Remove .a, .pyc, tests/docs — a bit, but pleasant
+    find /opt/conda/envs/app -type f -name "*.a" -delete && \
+    find /opt/conda/envs/app -type f -name "*.pyc" -delete && \
+    find /opt/conda/envs/app -type d -name "tests" -prune -exec rm -rf {} + && \
+    # Careful strip: remove symbols from large .so (if breaks — remove this line)
+    (command -v strip >/dev/null && \
+     find /opt/conda/envs/app -type f -name "*.so" -size +5M -exec strip --strip-unneeded {} + || true)
+
 # Application
 WORKDIR /app
 COPY src/ ./src/

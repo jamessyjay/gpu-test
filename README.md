@@ -1,8 +1,8 @@
 # GPU Cluster Acceptance — README
 
-
-
-**Uncompressed image size:** 6.11GB
+**Uncompressed image size (nvidia):** 20.20GB
+**Uncompressed image size (mamba):** 10.10GB
+**Uncompressed image size (latest):** 5.53GB
 
 ## Goal
 - Check nodes and GPU cluster "as in real life", not only with synthetic data.
