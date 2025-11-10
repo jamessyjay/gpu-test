@@ -3,14 +3,13 @@
 # Build from scratch with Ubuntu + micromamba #
 ###############################################
 
-# ---- GPU target (CUDA runtime + micromamba + PyTorch CUDA) ----
 FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04 AS gpu
 
 ENV DEBIAN_FRONTEND=noninteractive     MAMBA_ROOT_PREFIX=/opt/conda     PIP_NO_CACHE_DIR=1     PYTHONDONTWRITEBYTECODE=1     PYTHONUNBUFFERED=1     NVIDIA_VISIBLE_DEVICES=all     NVIDIA_DRIVER_CAPABILITIES=compute,utility     NCCL_DEBUG=INFO
 
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl bzip2 tini \
+      ca-certificates curl bzip2 tini python3 python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
 # Install micromamba via tar.bz2 (auto-arch)
@@ -29,26 +28,12 @@ RUN set -eux; \
 # Create env from spec (GPU)
 COPY conda-env-gpu.yml /tmp/env.yml
 SHELL ["/bin/bash", "-lc"]
-RUN micromamba clean --index-cache -y && \
-    micromamba create -y -n app -f /tmp/env.yml && \
-    micromamba clean -a -y
+RUN micromamba create -y -n app -f /tmp/env.yml \
+ && micromamba clean -a -y
 ENV PATH=${MAMBA_ROOT_PREFIX}/envs/app/bin:$PATH
 
 # App
 WORKDIR /app
-COPY requirements.txt ./requirements.txt
-# NOTE: requirements.txt may include heavy libs (e.g., peft). Keeping as-is per project needs.
-RUN python -m pip install --no-cache-dir -r requirements.txt
-# Install PyTorch with CUDA 12.4 from official wheels
-RUN python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu124 \
-    torch==2.5.*
-    
-# Aggressive cleanup to slim image size
-RUN set -eux; \
-    find ${MAMBA_ROOT_PREFIX}/envs/app -type d -name __pycache__ -prune -exec rm -rf {} +; \
-    find ${MAMBA_ROOT_PREFIX}/envs/app -type d -name tests -prune -exec rm -rf {} +; \
-    find ${MAMBA_ROOT_PREFIX}/envs/app -type f \( -name '*.a' -o -name '*.pyi' -o -name '*.hpp' -o -name '*.h' -o -name '*.pdb' -o -name '*.dll' -o -name '*.lib' \) -delete; \
-    rm -rf ${MAMBA_ROOT_PREFIX}/pkgs/* ~/.cache/pip/* /root/.cache/pip/* || true
 COPY src/ ./src/
 ENV PYTHONPATH=/app/src
 
