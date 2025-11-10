@@ -39,7 +39,6 @@ jobs:
         with:
           context: .
           file: Dockerfile.pip-gpu
-          target: pip-gpu
           push: false
           load: true
           # GPU-image strictly x86_64
@@ -80,7 +79,6 @@ jobs:
         with:
           context: .
           file: Dockerfile.pip-gpu
-          target: pip-gpu
           push: true
           platforms: linux/amd64
           tags: |
