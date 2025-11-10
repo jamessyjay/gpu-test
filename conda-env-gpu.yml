@@ -6,9 +6,14 @@ channels:
 dependencies:
   - python=3.11
   - pip
-  - pytorch=2.6.*
+  - numpy
+  - typing_extensions
+
+  - pytorch=2.5.1
   - pytorch-cuda=12.4
+
+  # Add cuda-version to satisfy __cuda
+  - cuda-version=12.4
+
+  # DDP/NCCL (usually comes transitively, but let's keep it explicit)
   - nccl
-  - pip:
-      - pydantic==2.9.2
-      - torchmetrics==1.4.0.post0
