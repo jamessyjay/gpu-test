@@ -7,9 +7,10 @@ channel_priority: strict
 dependencies:
   - python=3.11
   - pip
-  - pytorch::pytorch=2.6.*
+  - pytorch::pytorch=2.5.*
   - nvidia::pytorch-cuda=12.4
   - nvidia::nccl
+  - nvidia::cudnn
   - pip:
       - pydantic==2.9.2
       - torchmetrics==1.4.0.post0
