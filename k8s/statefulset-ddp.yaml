@@ -20,7 +20,7 @@ metadata:
   name: gpu-accept-ddp
 spec:
   serviceName: gpu-accept-ddp
-  replicas: 4  # adjust: match your node count
+  replicas: 1  # adjust: match your node count
   selector:
     matchLabels:
       app: gpu-accept-ddp
