@@ -61,16 +61,21 @@ spec:
             - |
               set -euo pipefail
               # Discover nnodes dynamically via headless service DNS
+              echo "Discover nnodes dynamically via headless service DNS"
               NN=$(getent hosts gpu-accept-ddp | wc -l)
               GPUS=${GPUS_PER_NODE:-1}
               RDZV_HOST=gpu-accept-ddp-0.gpu-accept-ddp  # rank0 pod DNS
               echo "Using nnodes=$NN, gpus_per_node=${GPUS}, rdzv=${RDZV_HOST}:29500"
+              echo " "
 
+              echo "Ensure reports dir exists"
               python - << 'PY'
               import os
               os.makedirs('/app/reports', exist_ok=True)
               PY
+              echo " "
 
+              echo "Running torchrun"
               ARGS="--report-dir ${REPORT_DIR} --report-name ddp_tests_result.json"
               if [ "${VERBOSE}" = "1" ]; then
                 ARGS="--verbose ${ARGS}"
@@ -85,6 +90,7 @@ spec:
                 --rdzv_backend=c10d --rdzv_endpoint=${RDZV_HOST}:29500 \
                 /app/src/ddp_tests.py ${ARGS}"
               echo "Torchrun finished with return code: $?"
+              echo " "
 
               echo "Running gpu tests"
               GARGS="--report-dir ${REPORT_DIR}"
@@ -93,6 +99,7 @@ spec:
               fi
               exec python /app/src/gpu_tests.py ${GARGS}
               echo "GPU tests finished with return code: $?"
+              echo " "
       volumes:
         - name: reports
           emptyDir: {}
