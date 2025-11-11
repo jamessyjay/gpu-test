@@ -186,4 +186,3 @@ Notes:
 - Requires NVIDIA device plugin on the cluster.
 - For multi-GPU per pod: set `nvidia.com/gpu: <N>` and use `torchrun` similarly to Docker example.
 - For private GHCR: create an `imagePullSecret` and reference it in the pod spec.
-
