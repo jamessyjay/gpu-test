@@ -33,6 +33,10 @@ import os
 
 import torch
 import torch.distributed as tdist
+from torch import nn
+from torch.utils.data import DataLoader, DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from gpu_tests import TinyMLP, ToyDataset
 
 basicConfig(level=INFO)
 logger = getLogger(__name__)
@@ -60,6 +64,10 @@ def parse_args() -> Namespace:
           - verbose (bool): enable DEBUG logs.
           - report_dir (str|None): directory for JSON report (rank0 only).
           - report_name (str|None): JSON report file name (rank0 only).
+          - train_smoke (bool): enable DDP training smoke test.
+          - epochs (int): epochs for training smoke.
+          - batch_size (int): batch size for training smoke.
+          - steps (int): max batches per epoch for training smoke (0 = full epoch).
     """
     ap = ArgumentParser()
     FP32 = 16_777_216  # Torch fp32 ~ 64MB
@@ -68,6 +76,10 @@ def parse_args() -> Namespace:
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--report-dir", type=str, default=None, help="directory to write JSON report (rank0 only)")
     ap.add_argument("--report-name", type=str, default=None, help="file name for JSON report (rank0 only)")
+    ap.add_argument("--train-smoke", action="store_true")
+    ap.add_argument("--epochs", type=int, default=2)
+    ap.add_argument("--batch-size", type=int, default=256)
+    ap.add_argument("--steps", type=int, default=0)
     return ap.parse_args()
 
 
@@ -166,6 +178,84 @@ def process_group(args: Namespace) -> int:
     return exit_code
 
 
+def ddp_training_smoke(args: Namespace) -> int:
+    """Run a tiny DDP training loop to validate distributed training health.
+
+    Uses ToyDataset/TinyMLP from gpu_tests with DistributedSampler and DDP.
+    Verifies average loss across ranks decreases sufficiently.
+    """
+    BACKEND = "nccl"
+    tdist.init_process_group(backend=BACKEND, timeout=_set_timeout())
+
+    rank = tdist.get_rank()
+    world = tdist.get_world_size()
+    local_rank = _env_int("LOCAL_RANK", 0)
+
+    torch.cuda.set_device(local_rank)
+    device = torch.device("cuda", local_rank)
+
+    dataset = ToyDataset(device=str(device))
+    sampler = DistributedSampler(dataset, num_replicas=world, rank=rank, shuffle=True)
+    loader = DataLoader(dataset, batch_size=max(1, int(args.batch_size)), sampler=sampler)
+
+    model = TinyMLP(input_features=dataset.d, k_classes=dataset.k).to(device)
+    ddp_model = DDP(model, device_ids=[local_rank])
+
+    optimizer = torch.optim.AdamW(ddp_model.parameters(), lr=3e-3)
+    criterion = nn.CrossEntropyLoss()
+
+    epochs = max(1, int(args.epochs))
+    max_steps = max(0, int(args.steps))
+
+    losses = []
+    for epoch in range(epochs):
+        sampler.set_epoch(epoch)
+        epoch_loss = 0.0
+        seen = 0
+        steps = 0
+        for batch_x, batch_y in loader:
+            optimizer.zero_grad(set_to_none=True)
+            logits = ddp_model(batch_x)
+            loss = criterion(logits, batch_y)
+            loss.backward()
+            optimizer.step()
+            bs = batch_x.size(0)
+            epoch_loss += loss.item() * bs
+            seen += bs
+            steps += 1
+            if max_steps and steps >= max_steps:
+                break
+        avg_loss = epoch_loss / max(1, seen)
+        t = torch.tensor([avg_loss], device=device, dtype=torch.float32)
+        tdist.all_reduce(t, op=tdist.ReduceOp.SUM)
+        t /= float(world)
+        losses.append(float(t.item()))
+
+    loss_first = losses[0]
+    loss_last = losses[-1]
+    ok = loss_last < loss_first * 0.8  # require at least 20% improvement
+
+    if rank == 0:
+        logger.info(f"[DDP-TRAIN] world={world} epochs={epochs} batch={args.batch_size} steps={max_steps} ok={ok}")
+        if args.report_dir:
+            os.makedirs(args.report_dir, exist_ok=True)
+            name = args.report_name or "ddp_training_result.json"
+            path = os.path.join(args.report_dir, name)
+            with open(path, "w") as f:
+                json.dump({
+                    "world": world,
+                    "epochs": epochs,
+                    "batch_size": args.batch_size,
+                    "steps": max_steps,
+                    "loss_start": loss_first,
+                    "loss_end": loss_last,
+                    "improved": ok
+                }, f)
+
+    return 0 if ok else 3
+
+
+
 def main() -> None:
     """Program entry point: configure logging, skip when no GPU, orchestrate test.
 
@@ -181,13 +271,17 @@ def main() -> None:
         logger.info("[DDP] No GPUs detected, skipping DDP test")
         if args.report_dir:
             os.makedirs(args.report_dir, exist_ok=True)
-            name = args.report_name or "ddp_tests_skipped.json"
+            # choose file name based on mode
+            name = args.report_name or ("ddp_training_skipped.json" if args.train_smoke else "ddp_tests_skipped.json")
             path = os.path.join(args.report_dir, name)
             with open(path, "w") as f:
                 json.dump({"skipped": True, "reason": "no_gpu"}, f)
         sys_exit(0)
     try:
-        exit_code = process_group(args)
+        if getattr(args, "train_smoke", False):
+            exit_code = ddp_training_smoke(args)
+        else:
+            exit_code = process_group(args)
     finally:
         if tdist.is_initialized():
             tdist.destroy_process_group()

@@ -24,19 +24,25 @@ Short, practical guide for DevOps: how to run GPU acceptance checks on a Slurm c
 - `sbatch/single_node_gpu.sbatch`:
   - Runs the container and inside it `python src/run_all_tests.py --quick`.
   - Executes both tests: `gpu_tests.py` (compute + training) and `ddp_tests.py` (if GPUs>1), writes JSON to `/app/reports`.
+- `sbatch/all_tests.sbatch`:
+  - Runs the unified runner `src/run_all_tests.py` with toggles `QUICK`, `VERBOSE`, `REPORT_DIR`, optional host mounts.
 - `sbatch/multi_node_ddp.sbatch`:
   - Configures rendezvous (`--rdzv_backend=c10d`, `--rdzv_endpoint=<master>:29500`).
-  - Runs `torchrun --nnodes=$SLURM_NNODES --nproc_per_node=$SLURM_GPUS_ON_NODE /app/src/ddp_tests.py --verbose`.
+  - Runs `ddp_tests.py` via `torchrun`.
+  - Supports optional DDP training smoke: set `TRAIN_SMOKE=1` (with `EPOCHS`, `STEPS`, `REPORT_DIR`, `VERBOSE`).
   - Reports are written to `/app/reports`.
 
 ## Variables and parameters
 - `OWNER` — owner of the GHCR image. Default: `OWNER` (override via export).
 - In `single_node_gpu.sbatch`:
   - `--gpus-per-node=1` — increase up to available GPUs on the node if desired.
+- In `all_tests.sbatch`:
+  - `QUICK` (default 1), `VERBOSE` (default 0), `REPORT_DIR` (default /app/reports), `HOST_REPORTS` (optional mount).
 - In `multi_node_ddp.sbatch`:
   - `#SBATCH -N <N>` — number of nodes.
   - `#SBATCH --gpus-per-node=<M>` — GPUs per node.
   - Master node for rendezvous is taken from `$SLURM_NODELIST`.
+  - Optional toggles: `TRAIN_SMOKE` (0/1), `EPOCHS` (default 1), `STEPS` (default 10), `VERBOSE` (default 1), `REPORT_DIR` (/app/reports).
 
 ## Collecting logs and reports
 - Logs:

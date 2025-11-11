@@ -105,6 +105,7 @@ def main():
         },
         "gpu_tests": None,
         "ddp_tests": None,
+        "ddp_train": None,
     }
 
     # Run single-node compute/train tests (gpu_tests.py)
@@ -123,8 +124,10 @@ def main():
     # Run DDP all-reduce test with torchrun if GPUs present
     ddp_report_path = None
     res_ddp = None
+    res_ddp_train = None
     if have_gpu:
         nproc = ngpu
+        # all-reduce
         cmd_ddp = (
             f"torchrun --standalone --nproc_per_node={nproc} src/ddp_tests.py"
         )
@@ -133,6 +136,15 @@ def main():
         if args.report_dir:
             cmd_ddp += f" --report-dir {shlex.quote(args.report_dir)}"
         res_ddp = _run(cmd_ddp)
+        # ddp training smoke
+        cmd_ddp_train = (
+            f"torchrun --standalone --nproc_per_node={nproc} src/ddp_tests.py --train-smoke"
+        )
+        if args.verbose:
+            cmd_ddp_train += " --verbose"
+        if args.report_dir:
+            cmd_ddp_train += f" --report-dir {shlex.quote(args.report_dir)}"
+        res_ddp_train = _run(cmd_ddp_train)
     else:
         # generate skipped report for ddp
         if args.report_dir:
@@ -152,11 +164,18 @@ def main():
             "stdout": res_ddp["stdout"],
             "stderr": res_ddp["stderr"],
         }
+    if res_ddp_train is not None:
+        results["ddp_train"] = {
+            "returncode": res_ddp_train["returncode"],
+            "stdout": res_ddp_train["stdout"],
+            "stderr": res_ddp_train["stderr"],
+        }
 
     # Print concise console summary
-    logger.info("[SUMMARY] gpu_tests rc=%s; ddp_tests rc=%s",
+    logger.info("[SUMMARY] gpu_tests rc=%s; ddp_tests rc=%s; ddp_train rc=%s",
                 results["gpu_tests"]["returncode"],
-                results["ddp_tests"]["returncode"] if results["ddp_tests"] else "skipped")
+                results["ddp_tests"]["returncode"] if results["ddp_tests"] else "skipped",
+                results["ddp_train"]["returncode"] if results["ddp_train"] else "skipped")
 
     # Write combined JSON summary
     if args.report_dir:
@@ -171,6 +190,8 @@ def main():
         exit_code = results["gpu_tests"]["returncode"]
     if results["ddp_tests"] and results["ddp_tests"]["returncode"] != 0:
         exit_code = results["ddp_tests"]["returncode"]
+    if results.get("ddp_train") and results["ddp_train"]["returncode"] != 0:
+        exit_code = results["ddp_train"]["returncode"]
     raise SystemExit(exit_code)
 
 

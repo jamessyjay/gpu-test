@@ -14,7 +14,10 @@
 Tests inside the container:
 - **Compute test**: matrices on each GPU → GFLOP/s.
 - **Training smoke**: tiny model, training for a few epochs → loss decreases.
-- _[*Optionally*]_: DDP/multi-node checks via sbatch examples.
+- **DDP all-reduce**: communication/NCCL sanity via src/ddp_tests.py.
+- **DDP training smoke**: tiny distributed training (`--train-smoke`) to verify loss decreases across ranks.
+
+All of the above are orchestrated by the unified runner: `src/run_all_tests.py`.
 
 Note: when no GPU is detected, the test script exits successfully (skips tests). This is used by CI where runners have no GPUs.
 
@@ -39,17 +42,21 @@ docker build -f Dockerfile.mamba -t ${IMAGE}:latest .
 ```bash
 export IMAGE=ghcr.io/jamessyjay/gpu-cluster-acceptance
 
-# quick GPU check (default CMD runs quick test too)
+# Quick full suite (compute + train + DDP where applicable)
 docker run --rm --gpus all ${IMAGE}:latest \
-  python src/gpu_tests.py --quick
+  python src/run_all_tests.py --quick --report-dir /app/reports
 
-# full GPU run
+# Full suite (longer)
 docker run --rm --gpus all ${IMAGE}:latest \
-  python src/gpu_tests.py
+  python src/run_all_tests.py --report-dir /app/reports
 
-# multi-GPU on a single node
+# Multi-GPU DDP all-reduce only
 docker run --rm --gpus all ${IMAGE}:latest \
-  bash -lc 'torchrun --standalone --nproc_per_node=$(nvidia-smi -L | wc -l) src/ddp_tests.py --iters=50 --numel=2000000'
+  bash -lc 'torchrun --standalone --nproc_per_node=$(nvidia-smi -L | wc -l) src/ddp_tests.py --iters=50 --numel=2000000 --report-dir /app/reports'
+
+# Multi-GPU DDP training smoke (tiny distributed training)
+docker run --rm --gpus all ${IMAGE}:latest \
+  bash -lc 'torchrun --standalone --nproc_per_node=$(nvidia-smi -L | wc -l) src/ddp_tests.py --train-smoke --epochs 1 --steps 10 --report-dir /app/reports'
 ```
 
 Note: container uses `ENTRYPOINT ["/usr/bin/tini","--"]` with CMD to run the script.
@@ -105,14 +112,15 @@ Sections with prefixes:
 - `[ENV]` environment info: Python, torch, `cuda_device_count`, `nvidia-smi -L`.
 - `[COMPUTE]` per GPU: GFLOP/s and test parameters.
 - `[TRAIN]` training results: start/finish loss, improved=True/False.
+- In `run_all_tests.py` summary you will see rc for `gpu_tests`, `ddp_tests` and `ddp_train`.
 - Result:
   - `[RESULT] SUCCESS` — everything is fine. GPU calculates, losses decrease.
   - `[RESULT] FAILURE: [...]` — error(s). Process will exit with code ≠ 0.
 
 For Distributed Data Parallel (DDP):
-- When running multi-node/multi-GPU test, expect a line like:
-  - `[ddp] ... ok=True` — communication/synchronization is ok.
-  - If not — check NCCL, network, GPU visibility, environment variables.
+- All-reduce: expect `[DDP] ... ok=True` on rank0.
+- DDP training smoke: JSON `ddp_training_result.json` includes `improved=true/false` and start/end loss.
+- If not — check NCCL, network, GPU visibility, environment variables.
 
 Example of expected "healthy" output:
 - GFLOP/s per each available GPU — numbers in the same order as `nvidia-smi -L`.
@@ -121,8 +129,13 @@ Example of expected "healthy" output:
 
 
 ## Tuning and flags
-- `--quick` — quick run (fewer iterations and matrix sizes).
-- `--verbose` — detailed DEBUG logs.
+- Runner `run_all_tests.py`:
+  - `--quick` — quick run (fewer iterations/steps).
+  - `--verbose` — detailed DEBUG logs.
+  - `--report-dir`, `--report-name` — write JSONs.
+- DDP `src/ddp_tests.py`:
+  - All-reduce: `--iters`, `--numel`, `--verbose`, `--report-dir`, `--report-name`.
+  - Training smoke: `--train-smoke` with optional `--epochs`, `--batch-size`, `--steps`.
 
 ## Changes in this revision
 - Removed CPU tests and CPU CI job. CI now only builds the GPU image.
