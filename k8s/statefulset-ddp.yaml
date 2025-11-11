@@ -32,7 +32,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: ddp
-          image: ghcr.io/jamessyjay/gpu-cluster-acceptance:latest
+          image: ghcr.io/jamessyjay/gpu-cluster-acceptance:gpu
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 29500
