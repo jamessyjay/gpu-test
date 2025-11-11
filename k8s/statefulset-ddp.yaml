@@ -80,9 +80,19 @@ spec:
                 ARGS=$(echo "$ARGS" | sed "s/ddp_tests_result.json/ddp_training_result.json/")
               fi
 
+              echo "Running torchrun with args: ${ARGS}"
               exec bash -lc "torchrun --nnodes=${NN} --nproc_per_node=${GPUS} \
                 --rdzv_backend=c10d --rdzv_endpoint=${RDZV_HOST}:29500 \
                 /app/src/ddp_tests.py ${ARGS}"
+              echo "Torchrun finished with return code: $?"
+
+              echo "Running gpu tests"
+              GARGS="--report-dir ${REPORT_DIR}"
+              if [ "${VERBOSE}" = "1" ]; then
+                GARGS="--verbose ${GARGS}"
+              fi
+              exec python /app/src/gpu_tests.py ${GARGS}
+              echo "GPU tests finished with return code: $?"
       volumes:
         - name: reports
           emptyDir: {}
