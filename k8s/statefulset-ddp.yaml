@@ -70,7 +70,7 @@ spec:
               os.makedirs('/app/reports', exist_ok=True)
               PY
               ARGS="--report-dir ${REPORT_DIR} --report-name ddp_tests_result.json";
-              if [ "${VERBOSE}" = "1" ]; then ARGS="--verbose ${ARGS}"; fi;
+              if [ "${VERBOSE}" = "1" ]; then ARGS="--verbose ${ARGS}"; fi
               if [ "${TRAIN_SMOKE}" = "1" ]; then \
                 ARGS="--train-smoke --epochs ${EPOCHS} --steps ${STEPS} ${ARGS}"; \
                 ARGS=$(echo "$ARGS" | sed "s/ddp_tests_result.json/ddp_training_result.json/"); \
