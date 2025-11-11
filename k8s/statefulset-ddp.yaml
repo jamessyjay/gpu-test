@@ -33,7 +33,7 @@ spec:
       containers:
         - name: ddp
           image: ghcr.io/jamessyjay/gpu-cluster-acceptance:gpu
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 29500
               name: rdzv
