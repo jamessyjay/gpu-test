@@ -29,7 +29,7 @@ spec:
       labels:
         app: gpu-accept-ddp
     spec:
-      restartPolicy: Never
+      restartPolicy: Always
       containers:
         - name: ddp
           image: ghcr.io/jamessyjay/gpu-cluster-acceptance:gpu
